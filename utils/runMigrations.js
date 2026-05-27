@@ -7,6 +7,42 @@ const runMigrations = async () => {
 
     console.log('Applying automated database migrations...');
 
+    // 0. Ensure core tables exist before altering them
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id                  SERIAL PRIMARY KEY,
+        buyer_id            INTEGER       REFERENCES users(id) ON DELETE CASCADE,
+        seller_id           INTEGER       REFERENCES users(id) ON DELETE CASCADE,
+        item_type           VARCHAR(50)   NOT NULL,
+        item_id             INTEGER       NOT NULL,
+        status              VARCHAR(50)   DEFAULT 'Pending',
+        created_at          TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id           SERIAL PRIMARY KEY,
+        reviewer_id  INTEGER  REFERENCES users(id)  ON DELETE CASCADE,
+        reviewed_id  INTEGER  REFERENCES users(id)  ON DELETE CASCADE,
+        order_id     INTEGER  REFERENCES orders(id) ON DELETE CASCADE,
+        rating       INTEGER  NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        review_text  TEXT,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reports (
+        id           SERIAL PRIMARY KEY,
+        reporter_id  INTEGER      REFERENCES users(id) ON DELETE CASCADE,
+        reported_id  INTEGER      REFERENCES users(id) ON DELETE CASCADE,
+        reason       TEXT         NOT NULL,
+        status       VARCHAR(50)  DEFAULT 'Pending',
+        created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // 1. Users Table Columns
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';
@@ -23,6 +59,12 @@ const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_updated_at TIMESTAMP;
+    `);
+
+    // 1b. Fix column types if they were created as VARCHAR(255) by older patches
+    await client.query(`
+      ALTER TABLE users ALTER COLUMN profile_image TYPE TEXT;
+      ALTER TABLE users ALTER COLUMN banner_image TYPE TEXT;
     `);
 
     // 2. Products Table Columns
@@ -80,6 +122,7 @@ const runMigrations = async () => {
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS booking_slot VARCHAR(100);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS selected_plan_type VARCHAR(100);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS selected_price VARCHAR(50);
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS learning_goal TEXT;
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS preferred_schedule VARCHAR(255);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_skill_level VARCHAR(50);
