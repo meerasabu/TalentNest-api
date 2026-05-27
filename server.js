@@ -57,12 +57,24 @@ syncDatabaseStatuses();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Dynamic CORS Configuration (Defaults to your Vercel production deployment)
-const allowedOrigin = process.env.FRONTEND_URL || 'https://talent-nest-api.vercel.app';
+// Dynamic CORS Configuration
+const allowedOrigins = [
+  'https://talent-nest-frontend.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+if (process.env.FRONTEND_URL) {
+  const cleanFrontendUrl = process.env.FRONTEND_URL.endsWith('/') 
+    ? process.env.FRONTEND_URL.slice(0, -1) 
+    : process.env.FRONTEND_URL;
+  if (!allowedOrigins.includes(cleanFrontendUrl)) {
+    allowedOrigins.push(cleanFrontendUrl);
+  }
+}
 
 // Middleware
 app.use(cors({
-  origin: allowedOrigin,
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
@@ -108,8 +120,9 @@ const server = http.createServer(app);
 // Initialize Socket.io with the exact same CORS policy
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigin,
-    methods: ['GET', 'POST']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
@@ -123,5 +136,5 @@ setupSocket(io);
 // Start Server
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
-  console.log(`CORS policy strictly locked to: ${allowedOrigin}`);
+  console.log(`CORS policy strictly locked to: ${allowedOrigins.join(', ')}`);
 });
