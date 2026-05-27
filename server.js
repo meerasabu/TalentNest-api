@@ -92,8 +92,24 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/search', searchRoutes);
 
-app.get('/', (req, res) => {
-  res.send('Welcome to the TalentNest API!');
+app.get('/', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    console.log('Root endpoint hit: Database connection is healthy.');
+    res.json({
+      success: true,
+      message: 'Welcome to the TalentNest API!',
+      database: 'Connected'
+    });
+  } catch (err) {
+    console.error('Root endpoint hit error: Database connection failed:', err.message);
+    res.status(500).json({
+      success: false,
+      message: 'Welcome to the TalentNest API!',
+      database: 'Disconnected',
+      error: err.message
+    });
+  }
 });
 
 app.get('/api/ping', (req, res) => {
