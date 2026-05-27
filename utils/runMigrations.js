@@ -94,10 +94,14 @@ const runMigrations = async () => {
         buyer_id    INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         seller_id   INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         status      VARCHAR(50)  DEFAULT 'Active',
+        is_closed   BOOLEAN      DEFAULT FALSE,
         created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(order_id)
       );
     `);
+
+    // Add is_closed column if missing (for existing tables)
+    await client.query(`ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_closed BOOLEAN DEFAULT FALSE;`);
 
     // 8. Messages Table
     await client.query(`

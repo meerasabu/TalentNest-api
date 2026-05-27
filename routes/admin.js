@@ -456,7 +456,7 @@ router.get('/marketplace/:id/warn-history', async (req, res) => {
   }
 });
 
-
+// GET /api/admin/skills - Fetch all skills for moderation
 router.get('/skills', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -888,7 +888,7 @@ router.get('/reports/:id/messages', async (req, res) => {
         WHERE chat_id = r.chat_id
            OR (r.chat_id IS NULL AND (
                 (buyer_id = r.reporter_id AND seller_id = r.reported_id) OR
-                (buyer_id = r.reported_id AND seller_id = r.reported_id)
+                (buyer_id = r.reported_id AND seller_id = r.reporter_id)
               ))
         ORDER BY created_at DESC 
         LIMIT 1

@@ -13,8 +13,4 @@ const pool = new Pool({
     : false
 });
 
-// Helper for running queries safely
-module.exports = {
-  query: (text, params) => pool.query(text, params),
-  pool // Exported in case you need direct pool access elsewhere
-};
+module.exports = pool;

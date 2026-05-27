@@ -1,16 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../db');
+const { verifyToken } = require('../middleware/authMiddleware');
 
 // POST /api/reviews - Submit a new review
-router.post('/', async (req, res) => {
+router.post('/', verifyToken, async (req, res) => {
   try {
     const { 
-      reviewerId, reviewedId, orderId, rating, reviewText,
+      reviewedId, orderId, rating, reviewText,
       communicationRating, teachingRating, outcomeRating 
     } = req.body;
+    const reviewerId = req.user.id;
 
-    if (!reviewerId || !reviewedId || !orderId || !rating) {
+    if (!reviewedId || !orderId || !rating) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
