@@ -64,8 +64,8 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 if (process.env.FRONTEND_URL) {
-  const cleanFrontendUrl = process.env.FRONTEND_URL.endsWith('/') 
-    ? process.env.FRONTEND_URL.slice(0, -1) 
+  const cleanFrontendUrl = process.env.FRONTEND_URL.endsWith('/')
+    ? process.env.FRONTEND_URL.slice(0, -1)
     : process.env.FRONTEND_URL;
   if (!allowedOrigins.includes(cleanFrontendUrl)) {
     allowedOrigins.push(cleanFrontendUrl);
@@ -127,7 +127,7 @@ app.get('/api/db-test', async (req, res) => {
   }
 });
 
-// Wrap Express app in HTTP server for WebSocket integration
+
 const http = require('http');
 const { Server } = require('socket.io');
 
