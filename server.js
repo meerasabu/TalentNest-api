@@ -27,7 +27,7 @@ async function syncDatabaseStatuses() {
         WHERE item_type = 'product' AND available_quantity > 0
       ) AND status = 'Sold'
     `);
-    
+
     // 2. For skills: status should be 'Active' if available_quantity > 0
     await pool.query(`
       UPDATE skills 
@@ -57,8 +57,15 @@ syncDatabaseStatuses();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Dynamic CORS Configuration (Defaults to your Vercel production deployment)
+const allowedOrigin = process.env.FRONTEND_URL || 'https://talent-nest-api.vercel.app';
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: allowedOrigin,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true
+}));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -81,7 +88,6 @@ app.get('/api/ping', (req, res) => {
   res.json({ success: true, message: 'pong' });
 });
 
-
 // Test Database Connection Route
 app.get('/api/db-test', async (req, res) => {
   try {
@@ -98,9 +104,11 @@ const http = require('http');
 const { Server } = require('socket.io');
 
 const server = http.createServer(app);
+
+// Initialize Socket.io with the exact same CORS policy
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: allowedOrigin,
     methods: ['GET', 'POST']
   }
 });
@@ -115,4 +123,5 @@ setupSocket(io);
 // Start Server
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`CORS policy strictly locked to: ${allowedOrigin}`);
 });
