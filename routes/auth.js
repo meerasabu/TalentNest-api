@@ -161,21 +161,23 @@ router.post('/signup/resend-otp', async (req, res) => {
 
 // Login Route
 router.post('/login', async (req, res) => {
-  const { campusEmail, password } = req.body;
+  // Accept both 'email' and 'campusEmail' for compatibility
+  const { email, campusEmail, password } = req.body;
+  const userEmail = email || campusEmail;
 
   try {
-    const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [campusEmail]);
+    const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [userEmail]);
     if (userResult.rows.length === 0) {
-      console.log('Login failed: no user found for email:', campusEmail);
+      console.log('Login failed: no user found for email:', userEmail);
       return res.status(400).json({ success: false, message: 'Invalid credentials.' });
     }
 
     const user = userResult.rows[0];
 
-    console.log('Login attempt for:', campusEmail, '| hash exists:', !!user.password_hash, '| hash length:', user.password_hash?.length);
+    console.log('Login attempt for:', userEmail, '| hash exists:', !!user.password_hash, '| hash length:', user.password_hash?.length);
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
-      console.log('Login failed: password mismatch for:', campusEmail);
+      console.log('Login failed: password mismatch for:', userEmail);
       return res.status(400).json({ success: false, message: 'Invalid credentials.' });
     }
 
