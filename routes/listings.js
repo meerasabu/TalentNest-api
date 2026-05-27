@@ -1,24 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const path = require('path');
 const pool = require('../db');
 const jwt = require('jsonwebtoken');
 const { verifyToken } = require('../middleware/authMiddleware');
 const fileToBase64 = require('../utils/fileToBase64');
 
-// Multer storage configuration
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const sanitizedName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
-    cb(null, file.fieldname + '-' + uniqueSuffix + '-' + sanitizedName);
+// Multer memory storage (Vercel-compatible, no disk writes)
+const storage = multer.memoryStorage();
+const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const fileFilter = (req, file, cb) => {
+  if (allowedImageTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'), false);
   }
-});
-const upload = multer({ storage: storage });
+};
+const upload = multer({ storage: storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // Create Product Route
 router.post('/products', verifyToken, upload.array('images', 4), async (req, res) => {
@@ -471,22 +469,34 @@ router.get('/users/:id/services', async (req, res) => {
 
 // Update Product Status
 router.patch('/products/:id/status', verifyToken, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
     const { status, quantity } = req.body;
+
+    // Verify ownership
+    const ownerCheck = await client.query('SELECT user_id FROM products WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      client.release();
+      return res.status(403).json({ success: false, message: 'You can only modify your own listings.' });
+    }
     
     // We start a transaction to make sure both updates succeed together
-    await pool.query('BEGIN');
+    await client.query('BEGIN');
 
     let result;
     if (status === 'Available') {
       const qty = quantity !== undefined && quantity !== null ? parseInt(quantity, 10) : 1;
-      result = await pool.query(
+      result = await client.query(
         'UPDATE products SET status = $1, quantity = $2 WHERE id = $3 RETURNING *',
         [status, qty, id]
       );
       
-      await pool.query(
+      await client.query(
         `INSERT INTO inventory (item_type, item_id, available_quantity) 
          VALUES ('product', $1, $2) 
          ON CONFLICT (item_type, item_id) 
@@ -494,13 +504,13 @@ router.patch('/products/:id/status', verifyToken, async (req, res) => {
          [id, qty]
       );
     } else {
-      result = await pool.query(
+      result = await client.query(
         'UPDATE products SET status = $1 WHERE id = $2 RETURNING *',
         [status, id]
       );
       
       if (status === 'Sold') {
-        await pool.query(
+        await client.query(
           `INSERT INTO inventory (item_type, item_id, available_quantity) 
            VALUES ('product', $1, 0) 
            ON CONFLICT (item_type, item_id) 
@@ -511,11 +521,11 @@ router.patch('/products/:id/status', verifyToken, async (req, res) => {
     }
 
     if (result.rows.length === 0) {
-      await pool.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
 
     if (status === 'Available' && result.rows[0].quantity > 0) {
       await triggerRestockNotifications(id, result.rows[0].title, result.rows[0].quantity, req.app.get('io'), pool);
@@ -523,9 +533,11 @@ router.patch('/products/:id/status', verifyToken, async (req, res) => {
 
     res.status(200).json({ success: true, product: result.rows[0] });
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error('Error updating product status:', error);
     res.status(500).json({ success: false, message: 'Server Error updating product status' });
+  } finally {
+    client.release();
   }
 });
 
@@ -533,10 +545,14 @@ router.patch('/products/:id/status', verifyToken, async (req, res) => {
 router.delete('/products/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query('DELETE FROM products WHERE id = $1 RETURNING *', [id]);
-    if (result.rows.length === 0) {
+    const ownerCheck = await pool.query('SELECT user_id FROM products WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only delete your own listings.' });
+    }
+    await pool.query('DELETE FROM products WHERE id = $1', [id]);
     res.status(200).json({ success: true, message: 'Product deleted successfully' });
   } catch (error) {
     console.error('Error deleting product:', error);
@@ -549,13 +565,17 @@ router.patch('/skills/:id/status', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const ownerCheck = await pool.query('SELECT user_id FROM skills WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Skill not found' });
+    }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only modify your own listings.' });
+    }
     const result = await pool.query(
       'UPDATE skills SET status = $1 WHERE id = $2 RETURNING *',
       [status, id]
     );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Skill not found' });
-    }
     res.status(200).json({ success: true, skill: result.rows[0] });
   } catch (error) {
     console.error('Error updating skill status:', error);
@@ -567,10 +587,14 @@ router.patch('/skills/:id/status', verifyToken, async (req, res) => {
 router.delete('/skills/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query('DELETE FROM skills WHERE id = $1 RETURNING *', [id]);
-    if (result.rows.length === 0) {
+    const ownerCheck = await pool.query('SELECT user_id FROM skills WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Skill not found' });
     }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only delete your own listings.' });
+    }
+    await pool.query('DELETE FROM skills WHERE id = $1', [id]);
     res.status(200).json({ success: true, message: 'Skill deleted successfully' });
   } catch (error) {
     console.error('Error deleting skill:', error);
@@ -583,13 +607,17 @@ router.patch('/services/:id/status', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
+    const ownerCheck = await pool.query('SELECT user_id FROM services WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Service not found' });
+    }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only modify your own listings.' });
+    }
     const result = await pool.query(
       'UPDATE services SET status = $1 WHERE id = $2 RETURNING *',
       [status, id]
     );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Service not found' });
-    }
     res.status(200).json({ success: true, service: result.rows[0] });
   } catch (error) {
     console.error('Error updating service status:', error);
@@ -601,10 +629,14 @@ router.patch('/services/:id/status', verifyToken, async (req, res) => {
 router.delete('/services/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await pool.query('DELETE FROM services WHERE id = $1 RETURNING *', [id]);
-    if (result.rows.length === 0) {
+    const ownerCheck = await pool.query('SELECT user_id FROM services WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Service not found' });
     }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only delete your own listings.' });
+    }
+    await pool.query('DELETE FROM services WHERE id = $1', [id]);
     res.status(200).json({ success: true, message: 'Service deleted successfully' });
   } catch (error) {
     console.error('Error deleting service:', error);
@@ -614,9 +646,23 @@ router.delete('/services/:id', verifyToken, async (req, res) => {
 
 // Update Product
 router.put('/products/:id', verifyToken, upload.array('images', 4), async (req, res) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
     const { title, description, price, condition, category, quantity, existingImages } = req.body;
+
+    // Verify ownership
+    const ownerCheck = await client.query('SELECT user_id, quantity, status FROM products WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
+      client.release();
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      client.release();
+      return res.status(403).json({ success: false, message: 'You can only edit your own listings.' });
+    }
+    const prevQty = ownerCheck.rows[0].quantity;
+    const prevStatus = ownerCheck.rows[0].status;
     
     let imageUrls = existingImages ? JSON.parse(existingImages) : [];
     if (req.files && req.files.length > 0) {
@@ -626,24 +672,16 @@ router.put('/products/:id', verifyToken, upload.array('images', 4), async (req, 
 
     const qty = quantity !== undefined && quantity !== null ? parseInt(quantity, 10) : 1;
 
-    // Fetch previous quantity and status
-    const prevProductRes = await pool.query('SELECT quantity, status FROM products WHERE id = $1', [id]);
-    if (prevProductRes.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
-    }
-    const prevQty = prevProductRes.rows[0].quantity;
-    const prevStatus = prevProductRes.rows[0].status;
+    await client.query('BEGIN');
 
-    await pool.query('BEGIN');
-
-    const result = await pool.query(
+    const result = await client.query(
       `UPDATE products 
        SET title = $1, description = $2, price = $3, condition = $4, category = $5, image_urls = $6, quantity = $7
        WHERE id = $8 RETURNING *`,
       [title, description, price, condition, category, imageUrls, qty, id]
     );
 
-    await pool.query(
+    await client.query(
       `INSERT INTO inventory (item_type, item_id, available_quantity) 
        VALUES ('product', $1, $2) 
        ON CONFLICT (item_type, item_id) 
@@ -653,14 +691,14 @@ router.put('/products/:id', verifyToken, upload.array('images', 4), async (req, 
 
     let updatedProduct = result.rows[0];
     if (qty > 0 && prevStatus === 'Sold') {
-      const statusUpdateRes = await pool.query(
+      const statusUpdateRes = await client.query(
         "UPDATE products SET status = 'Available' WHERE id = $1 RETURNING *",
         [id]
       );
       updatedProduct = statusUpdateRes.rows[0];
     }
 
-    await pool.query('COMMIT');
+    await client.query('COMMIT');
 
     // Trigger restock notifications if quantity is now positive and it was previously out of stock or marked as Sold
     if (qty > 0 && (prevQty <= 0 || prevStatus === 'Sold')) {
@@ -669,9 +707,11 @@ router.put('/products/:id', verifyToken, upload.array('images', 4), async (req, 
 
     res.status(200).json({ success: true, product: updatedProduct });
   } catch (error) {
-    await pool.query('ROLLBACK');
+    await client.query('ROLLBACK');
     console.error('Error updating product:', error);
     res.status(500).json({ success: false, message: 'Server Error updating product' });
+  } finally {
+    client.release();
   }
 });
 
@@ -679,6 +719,16 @@ router.put('/products/:id', verifyToken, upload.array('images', 4), async (req, 
 router.put('/skills/:id', verifyToken, upload.fields([{ name: 'images', maxCount: 4 }, { name: 'demoMedia', maxCount: 4 }]), async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Verify ownership
+    const ownerCheck = await pool.query('SELECT user_id FROM skills WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Skill not found' });
+    }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only edit your own listings.' });
+    }
+
     const { 
       title, description, category, chargeType, availableTimeSlot, hourlyRate, skillType, existingImages,
       experienceLevel, prevExperience, sessionTypes, learningOutcomes, topicsCovered, languagesKnown, dayAvailability, portfolioLinks, existingDemoMedia
@@ -735,6 +785,16 @@ router.put('/skills/:id', verifyToken, upload.fields([{ name: 'images', maxCount
 router.put('/services/:id', verifyToken, upload.array('images', 4), async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Verify ownership
+    const ownerCheck = await pool.query('SELECT user_id FROM services WHERE id = $1', [id]);
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Service not found' });
+    }
+    if (ownerCheck.rows[0].user_id !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'You can only edit your own listings.' });
+    }
+
     const { title, description, serviceType, standardPlan, groupPlan, existingImages } = req.body;
     
     let imageUrls = existingImages ? JSON.parse(existingImages) : [];

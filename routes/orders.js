@@ -73,13 +73,21 @@ router.post('/', verifyToken, async (req, res) => {
   const client = await pool.connect();
   try {
     const {
-      buyerId, sellerId, itemType, itemId,
+      sellerId, itemType, itemId,
       quantity, selectedPlanType, selectedPrice,
       bookingDate, bookingSlot
     } = req.body;
 
-    if (!buyerId || !sellerId || !itemType || !itemId) {
+    // Use authenticated user as buyer
+    const buyerId = req.user.id;
+
+    if (!sellerId || !itemType || !itemId) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    // Prevent buying own items
+    if (buyerId === parseInt(sellerId, 10)) {
+      return res.status(400).json({ success: false, message: 'You cannot place an order on your own listing.' });
     }
 
     // Validate service booking fields
@@ -217,6 +225,12 @@ router.post('/', verifyToken, async (req, res) => {
 router.get('/buyer/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = parseInt(id, 10);
+
+    // Users can only view their own orders
+    if (req.user.id !== userId) {
+      return res.status(403).json({ success: false, message: 'You can only view your own orders.' });
+    }
 
     const result = await pool.query(
       `SELECT o.id, o.buyer_id, o.seller_id, o.item_type, o.item_id, o.status, o.created_at, o.updated_at, o.quantity,
@@ -256,6 +270,12 @@ router.get('/buyer/:id', verifyToken, async (req, res) => {
 router.get('/seller/:id', verifyToken, async (req, res) => {
   try {
     const { id } = req.params;
+    const userId = parseInt(id, 10);
+
+    // Users can only view their own orders
+    if (req.user.id !== userId) {
+      return res.status(403).json({ success: false, message: 'You can only view your own orders.' });
+    }
 
     const result = await pool.query(
       `SELECT o.id, o.buyer_id, o.seller_id, o.item_type, o.item_id, o.status, o.created_at, o.updated_at, o.quantity,

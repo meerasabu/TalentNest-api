@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const pool = require('../db');
 const multer = require('multer');
-const path = require('path');
 const { verifyToken } = require('../middleware/authMiddleware');
 const { sendRegistrationOtpEmail } = require('../utils/mailer');
 const fileToBase64 = require('../utils/fileToBase64');
@@ -19,17 +19,17 @@ pool.query(`
   )
 `).catch(err => console.error('Error creating registration_otps table:', err));
 
-// Multer storage configuration for profile images
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+// Multer memory storage (Vercel-compatible, no disk writes)
+const storage = multer.memoryStorage();
+const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const fileFilter = (req, file, cb) => {
+  if (allowedImageTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'), false);
   }
-});
-const upload = multer({ storage: storage });
+};
+const upload = multer({ storage: storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // Signup Route
 // Signup Route - Generates and sends OTP, stores temp registration data
@@ -49,7 +49,7 @@ router.post('/signup', async (req, res) => {
     }
 
     // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes expiry
 
     // Hash the password for security before storing in temp table
@@ -82,7 +82,7 @@ router.post('/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Signup OTP generation error:', error);
-    res.status(500).json({ success: false, message: `Failed to process request: ${error.message}` });
+    res.status(500).json({ success: false, message: 'Failed to process signup request.' });
   }
 });
 
@@ -121,7 +121,7 @@ router.post('/signup/verify-otp', async (req, res) => {
     });
   } catch (error) {
     console.error('Signup verification error:', error);
-    res.status(500).json({ success: false, message: `Server error during verification: ${error.message}` });
+    res.status(500).json({ success: false, message: 'Server error during verification.' });
   }
 });
 
@@ -137,7 +137,7 @@ router.post('/signup/resend-otp', async (req, res) => {
     }
 
     // Generate new OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Update in database
@@ -155,7 +155,7 @@ router.post('/signup/resend-otp', async (req, res) => {
     });
   } catch (error) {
     console.error('Resend OTP error:', error);
-    res.status(500).json({ success: false, message: `Failed to resend code: ${error.message}` });
+    res.status(500).json({ success: false, message: 'Failed to resend verification code.' });
   }
 });
 
@@ -392,6 +392,11 @@ router.put('/profile/:id', verifyToken, upload.fields([{ name: 'profileImage', m
     return res.status(400).json({ success: false, message: 'Invalid user ID format.' });
   }
 
+  // Authorization: users can only edit their own profile
+  if (req.user.id !== userId) {
+    return res.status(403).json({ success: false, message: 'You can only edit your own profile.' });
+  }
+
   console.log('--- Profile Update Request ---');
   console.log('User ID:', userId);
   console.log('Body Keys:', Object.keys(req.body));
@@ -462,7 +467,7 @@ router.put('/profile/:id', verifyToken, upload.fields([{ name: 'profileImage', m
     res.status(200).json({ success: true, user: updatedUser, message: 'Profile updated successfully.' });
   } catch (error) {
     console.error('CRITICAL Profile update error:', error);
-    res.status(500).json({ success: false, message: 'Database error during update.', details: error.message });
+    res.status(500).json({ success: false, message: 'Database error during profile update.' });
   }
 });
 
@@ -478,7 +483,7 @@ router.post('/forgot-password', async (req, res) => {
     }
 
     // Generate secure 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
 
     // Save OTP to DB

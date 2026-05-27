@@ -6,9 +6,10 @@ const { verifyToken } = require('../middleware/authMiddleware');
 // Add item to wishlist
 router.post('/', verifyToken, async (req, res) => {
   try {
-    const { userId, itemType, itemId } = req.body;
+    const { itemType, itemId } = req.body;
+    const userId = req.user.id;
     
-    if (!userId || !itemType || !itemId) {
+    if (!itemType || !itemId) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
     }
 
