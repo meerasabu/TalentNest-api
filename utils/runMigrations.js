@@ -1,4 +1,5 @@
 const pool = require('../db');
+const bcrypt = require('bcryptjs');
 
 const runMigrations = async () => {
   const client = await pool.connect();
@@ -295,6 +296,23 @@ const runMigrations = async () => {
 
     await client.query('COMMIT');
     console.log('Automated migrations successfully applied and verified.');
+
+    // Seed admin user if not exists
+    try {
+      const adminEmail = 'admin@kristujayanti.com';
+      const existing = await client.query('SELECT id FROM users WHERE email = $1', [adminEmail]);
+      if (existing.rows.length === 0) {
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash('Admin@123', salt);
+        await client.query(
+          'INSERT INTO users (first_name, last_name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
+          ['Campus', 'Admin', adminEmail, hash, 'admin']
+        );
+        console.log('Admin user seeded: admin@kristujayanti.com');
+      }
+    } catch (seedErr) {
+      console.error('Admin seed failed (non-fatal):', seedErr.message);
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Migration failed:', error);
