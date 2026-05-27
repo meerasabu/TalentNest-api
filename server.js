@@ -3,6 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 dotenv.config();
 const pool = require('./db');
+const runMigrations = require('./utils/runMigrations');
 const authRoutes = require('./routes/auth');
 const listingsRoutes = require('./routes/listings');
 const wishlistRoutes = require('./routes/wishlist');
@@ -17,6 +18,9 @@ const path = require('path');
 // Sync and repair any mismatched item statuses on startup
 async function syncDatabaseStatuses() {
   try {
+    // Run auto-migrations first to ensure all tables & columns exist in remote Neon DB
+    await runMigrations();
+
     console.log("Synchronizing item statuses and inventory...");
     // 1. For products: status should be 'Available' if available_quantity > 0
     await pool.query(`
@@ -64,8 +68,8 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 if (process.env.FRONTEND_URL) {
-  const cleanFrontendUrl = process.env.FRONTEND_URL.endsWith('/')
-    ? process.env.FRONTEND_URL.slice(0, -1)
+  const cleanFrontendUrl = process.env.FRONTEND_URL.endsWith('/') 
+    ? process.env.FRONTEND_URL.slice(0, -1) 
     : process.env.FRONTEND_URL;
   if (!allowedOrigins.includes(cleanFrontendUrl)) {
     allowedOrigins.push(cleanFrontendUrl);
