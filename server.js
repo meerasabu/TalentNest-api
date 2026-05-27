@@ -62,6 +62,9 @@ syncDatabaseStatuses();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy (required for Vercel/load balancers - fixes rate limiting & IP detection)
+app.set('trust proxy', 1);
+
 // Dynamic CORS Configuration
 const allowedOrigins = [
   'https://talent-nest-frontend.vercel.app',
