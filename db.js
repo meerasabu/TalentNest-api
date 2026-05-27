@@ -1,17 +1,20 @@
+// db.js
 const { Pool } = require('pg');
-const dotenv = require('dotenv');
+require('dotenv').config();
 
-dotenv.config();
+// Determine if we are running in production
+const isProduction = process.env.NODE_ENV === 'production';
 
-// The Pool will use the environment variables automatically 
-// if they are named PGUSER, PGHOST, PGPASSWORD, PGDATABASE, PGPORT
-// But explicitly passing them is also fine and often clearer for beginners.
 const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT || 5432,
+  connectionString: process.env.DATABASE_URL,
+  // Automatically enforces SSL on Vercel, but allows unencrypted connections on localhost
+  ssl: isProduction
+    ? { rejectUnauthorized: false }
+    : false
 });
 
-module.exports = pool;
+// Helper for running queries safely
+module.exports = {
+  query: (text, params) => pool.query(text, params),
+  pool // Exported in case you need direct pool access elsewhere
+};
