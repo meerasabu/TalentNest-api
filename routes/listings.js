@@ -5,6 +5,7 @@ const path = require('path');
 const pool = require('../db');
 const jwt = require('jsonwebtoken');
 const { verifyToken } = require('../middleware/authMiddleware');
+const fileToBase64 = require('../utils/fileToBase64');
 
 // Multer storage configuration
 const storage = multer.diskStorage({
@@ -23,8 +24,8 @@ const upload = multer({ storage: storage });
 router.post('/products', verifyToken, upload.array('images', 4), async (req, res) => {
   try {
     const { userId, title, description, price, condition, category, quantity } = req.body;
-    // Map multiple image files to an array of URLs
-    const imageUrls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
+    // Convert multiple image files to base64 strings
+    const imageUrls = req.files ? req.files.map(file => fileToBase64(file)).filter(Boolean) : [];
     
     // Extract authenticated user ID, or fallback safely
     const uid = req.user && req.user.id ? req.user.id : (userId && !isNaN(parseInt(userId, 10)) ? parseInt(userId, 10) : null);
@@ -63,8 +64,8 @@ router.post('/skills', verifyToken, upload.fields([{ name: 'images', maxCount: 4
       experienceLevel, prevExperience, sessionTypes, learningOutcomes, topicsCovered, languagesKnown, dayAvailability, portfolioLinks
     } = req.body;
     
-    const imageUrls = req.files && req.files.images ? req.files.images.map(file => `/uploads/${file.filename}`) : [];
-    const demoMedia = req.files && req.files.demoMedia ? req.files.demoMedia.map(file => `/uploads/${file.filename}`) : [];
+    const imageUrls = req.files && req.files.images ? req.files.images.map(file => fileToBase64(file)).filter(Boolean) : [];
+    const demoMedia = req.files && req.files.demoMedia ? req.files.demoMedia.map(file => fileToBase64(file)).filter(Boolean) : [];
     // Extract authenticated user ID, or fallback safely
     const uid = req.user && req.user.id ? req.user.id : (userId && !isNaN(parseInt(userId, 10)) ? parseInt(userId, 10) : null);
     if (!uid) {
@@ -114,7 +115,7 @@ router.post('/skills', verifyToken, upload.fields([{ name: 'images', maxCount: 4
 router.post('/services', verifyToken, upload.array('images', 4), async (req, res) => {
   try {
     const { userId, title, description, serviceType, standardPlan, groupPlan } = req.body;
-    const imageUrls = req.files ? req.files.map(file => `/uploads/${file.filename}`) : [];
+    const imageUrls = req.files ? req.files.map(file => fileToBase64(file)).filter(Boolean) : [];
     // Extract authenticated user ID, or fallback safely
     const uid = req.user && req.user.id ? req.user.id : (userId && !isNaN(parseInt(userId, 10)) ? parseInt(userId, 10) : null);
     if (!uid) {
@@ -619,7 +620,7 @@ router.put('/products/:id', verifyToken, upload.array('images', 4), async (req, 
     
     let imageUrls = existingImages ? JSON.parse(existingImages) : [];
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => `/uploads/${file.filename}`);
+      const newImages = req.files.map(file => fileToBase64(file)).filter(Boolean);
       imageUrls = [...imageUrls, ...newImages];
     }
 
@@ -687,13 +688,13 @@ router.put('/skills/:id', verifyToken, upload.fields([{ name: 'images', maxCount
     
     let imageUrls = existingImages ? JSON.parse(existingImages) : [];
     if (req.files && req.files.images && req.files.images.length > 0) {
-      const newImages = req.files.images.map(file => `/uploads/${file.filename}`);
+      const newImages = req.files.images.map(file => fileToBase64(file)).filter(Boolean);
       imageUrls = [...imageUrls, ...newImages];
     }
 
     let demoMediaUrls = existingDemoMedia ? JSON.parse(existingDemoMedia) : [];
     if (req.files && req.files.demoMedia && req.files.demoMedia.length > 0) {
-      const newDemos = req.files.demoMedia.map(file => `/uploads/${file.filename}`);
+      const newDemos = req.files.demoMedia.map(file => fileToBase64(file)).filter(Boolean);
       demoMediaUrls = [...demoMediaUrls, ...newDemos];
     }
 
@@ -738,7 +739,7 @@ router.put('/services/:id', verifyToken, upload.array('images', 4), async (req, 
     
     let imageUrls = existingImages ? JSON.parse(existingImages) : [];
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => `/uploads/${file.filename}`);
+      const newImages = req.files.map(file => fileToBase64(file)).filter(Boolean);
       imageUrls = [...imageUrls, ...newImages];
     }
 

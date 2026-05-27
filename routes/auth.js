@@ -7,6 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const { verifyToken } = require('../middleware/authMiddleware');
 const { sendRegistrationOtpEmail } = require('../utils/mailer');
+const fileToBase64 = require('../utils/fileToBase64');
 
 // Ensure registration_otps table exists
 pool.query(`
@@ -406,10 +407,10 @@ router.put('/profile/:id', verifyToken, upload.fields([{ name: 'profileImage', m
     let bannerImageUrl = req.body.bannerImageUrl || null;
 
     if (req.files && req.files['profileImage']) {
-      profileImageUrl = `/uploads/${req.files['profileImage'][0].filename}`;
+      profileImageUrl = fileToBase64(req.files['profileImage'][0]);
     }
     if (req.files && req.files['bannerImage']) {
-      bannerImageUrl = `/uploads/${req.files['bannerImage'][0].filename}`;
+      bannerImageUrl = fileToBase64(req.files['bannerImage'][0]);
     }
 
     // Sanitize graduationYear
