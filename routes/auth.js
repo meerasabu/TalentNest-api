@@ -166,13 +166,16 @@ router.post('/login', async (req, res) => {
   try {
     const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [campusEmail]);
     if (userResult.rows.length === 0) {
+      console.log('Login failed: no user found for email:', campusEmail);
       return res.status(400).json({ success: false, message: 'Invalid credentials.' });
     }
 
     const user = userResult.rows[0];
 
+    console.log('Login attempt for:', campusEmail, '| hash exists:', !!user.password_hash, '| hash length:', user.password_hash?.length);
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
+      console.log('Login failed: password mismatch for:', campusEmail);
       return res.status(400).json({ success: false, message: 'Invalid credentials.' });
     }
 
