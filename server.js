@@ -63,6 +63,7 @@ const PORT = process.env.PORT || 5000;
 
 // Dynamic CORS Configuration
 const allowedOrigins = [
+  'https://talentnest-api.onrender.com',
   'https://talent-nest-frontend.vercel.app',
   'http://localhost:5173',
   'http://localhost:3000'
