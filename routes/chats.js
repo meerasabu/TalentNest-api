@@ -131,9 +131,9 @@ router.get('/:userId', verifyToken, async (req, res) => {
     // To avoid complex SQL logic, we'll fetch them in parallel JS
     const populatedChats = await Promise.all(chats.map(async (chat) => {
       let itemTitle = 'Unknown Item';
-      let table = 'products';
-      if (chat.item_type === 'skill') table = 'skills';
-      if (chat.item_type === 'service') table = 'services';
+      const tableMap = { product: 'products', skill: 'skills', service: 'services' };
+      const table = tableMap[chat.item_type];
+      if (!table) return { ...chat, item_title: itemTitle };
       
       try {
         const itemRes = await pool.query(`SELECT title FROM ${table} WHERE id = $1`, [chat.item_id]);
@@ -178,10 +178,11 @@ router.get('/chat/:chatId/messages', verifyToken, async (req, res) => {
 router.post('/chat/:chatId/messages', verifyToken, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { senderId, text } = req.body;
+    const { text } = req.body;
+    const senderId = req.user.id;
 
-    if (!senderId || !text) {
-      return res.status(400).json({ success: false, message: 'Missing senderId or text' });
+    if (!text) {
+      return res.status(400).json({ success: false, message: 'Message text is required' });
     }
 
     // Verify chat exists

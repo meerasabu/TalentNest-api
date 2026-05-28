@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const rateLimit = require('express-rate-limit');
 dotenv.config();
 const pool = require('./db');
 const runMigrations = require('./utils/runMigrations');
@@ -61,6 +62,9 @@ syncDatabaseStatuses();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust proxy (required for Vercel/load balancers - fixes rate limiting & IP detection)
+app.set('trust proxy', 1);
+
 // Dynamic CORS Configuration
 const allowedOrigins = [
   'https://talentnest-api.onrender.com',
@@ -83,8 +87,22 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Rate limiting for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { success: false, message: 'Too many requests. Please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/login', authLimiter);
+app.use('/api/signup', authLimiter);
+app.use('/api/forgot-password', authLimiter);
+app.use('/api/verify-otp', authLimiter);
+app.use('/api/reset-password', authLimiter);
 
 // Routes
 app.use('/api', authRoutes);
@@ -136,26 +154,46 @@ app.get('/api/db-test', async (req, res) => {
 const http = require('http');
 const { Server } = require('socket.io');
 
-const server = http.createServer(app);
+// Socket.io + HTTP server only work outside Vercel serverless
+if (!process.env.VERCEL) {
+  const server = http.createServer(app);
 
-// Initialize Socket.io with the exact same CORS policy
-const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
-});
+  // Initialize Socket.io with the exact same CORS policy
+  const io = new Server(server, {
+    cors: {
+      origin: allowedOrigins,
+      methods: ['GET', 'POST'],
+      credentials: true
+    }
+  });
 
-// Store io instance on app for access in routes
-app.set('io', io);
+  // Store io instance on app for access in routes
+  app.set('io', io);
 
-// Setup WebSocket handlers
-const setupSocket = require('./socket');
-setupSocket(io);
+  // Setup WebSocket handlers
+  const setupSocket = require('./socket');
+  setupSocket(io);
 
-// Start Server
-server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-  console.log(`CORS policy strictly locked to: ${allowedOrigins.join(', ')}`);
-});
+  // Start Server
+  server.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`CORS policy strictly locked to: ${allowedOrigins.join(', ')}`);
+  });
+
+  // Graceful shutdown
+  const gracefulShutdown = (signal) => {
+    console.log(`${signal} received. Shutting down gracefully...`);
+    server.close(() => {
+      pool.end().then(() => {
+        console.log('Database pool closed.');
+        process.exit(0);
+      });
+    });
+    setTimeout(() => process.exit(1), 10000);
+  };
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+}
+
+// Export for Vercel serverless
+module.exports = app;

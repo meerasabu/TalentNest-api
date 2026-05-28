@@ -1,4 +1,5 @@
 const pool = require('../db');
+const bcrypt = require('bcryptjs');
 
 const runMigrations = async () => {
   const client = await pool.connect();
@@ -6,6 +7,42 @@ const runMigrations = async () => {
     await client.query('BEGIN');
 
     console.log('Applying automated database migrations...');
+
+    // 0. Ensure core tables exist before altering them
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        id                  SERIAL PRIMARY KEY,
+        buyer_id            INTEGER       REFERENCES users(id) ON DELETE CASCADE,
+        seller_id           INTEGER       REFERENCES users(id) ON DELETE CASCADE,
+        item_type           VARCHAR(50)   NOT NULL,
+        item_id             INTEGER       NOT NULL,
+        status              VARCHAR(50)   DEFAULT 'Pending',
+        created_at          TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id           SERIAL PRIMARY KEY,
+        reviewer_id  INTEGER  REFERENCES users(id)  ON DELETE CASCADE,
+        reviewed_id  INTEGER  REFERENCES users(id)  ON DELETE CASCADE,
+        order_id     INTEGER  REFERENCES orders(id) ON DELETE CASCADE,
+        rating       INTEGER  NOT NULL CHECK (rating >= 1 AND rating <= 5),
+        review_text  TEXT,
+        created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reports (
+        id           SERIAL PRIMARY KEY,
+        reporter_id  INTEGER      REFERENCES users(id) ON DELETE CASCADE,
+        reported_id  INTEGER      REFERENCES users(id) ON DELETE CASCADE,
+        reason       TEXT         NOT NULL,
+        status       VARCHAR(50)  DEFAULT 'Pending',
+        created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
     // 1. Users Table Columns
     await client.query(`
@@ -23,6 +60,12 @@ const runMigrations = async () => {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_updated_at TIMESTAMP;
+    `);
+
+    // 1b. Fix column types if they were created as VARCHAR(255) by older patches
+    await client.query(`
+      ALTER TABLE users ALTER COLUMN profile_image TYPE TEXT;
+      ALTER TABLE users ALTER COLUMN banner_image TYPE TEXT;
     `);
 
     // 2. Products Table Columns
@@ -80,6 +123,7 @@ const runMigrations = async () => {
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS booking_slot VARCHAR(100);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS selected_plan_type VARCHAR(100);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS selected_price VARCHAR(50);
+      ALTER TABLE orders ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS learning_goal TEXT;
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS preferred_schedule VARCHAR(255);
       ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_skill_level VARCHAR(50);
@@ -94,10 +138,14 @@ const runMigrations = async () => {
         buyer_id    INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         seller_id   INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         status      VARCHAR(50)  DEFAULT 'Active',
+        is_closed   BOOLEAN      DEFAULT FALSE,
         created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(order_id)
       );
     `);
+
+    // Add is_closed column if missing (for existing tables)
+    await client.query(`ALTER TABLE chats ADD COLUMN IF NOT EXISTS is_closed BOOLEAN DEFAULT FALSE;`);
 
     // 8. Messages Table
     await client.query(`
@@ -248,6 +296,23 @@ const runMigrations = async () => {
 
     await client.query('COMMIT');
     console.log('Automated migrations successfully applied and verified.');
+
+    // Seed admin user if not exists
+    try {
+      const adminEmail = 'admin@kristujayanti.com';
+      const existing = await client.query('SELECT id FROM users WHERE email = $1', [adminEmail]);
+      if (existing.rows.length === 0) {
+        const salt = await bcrypt.genSalt(10);
+        const hash = await bcrypt.hash('Admin@123', salt);
+        await client.query(
+          'INSERT INTO users (first_name, last_name, email, password_hash, role) VALUES ($1, $2, $3, $4, $5)',
+          ['Campus', 'Admin', adminEmail, hash, 'admin']
+        );
+        console.log('Admin user seeded: admin@kristujayanti.com');
+      }
+    } catch (seedErr) {
+      console.error('Admin seed failed (non-fatal):', seedErr.message);
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Migration failed:', error);
