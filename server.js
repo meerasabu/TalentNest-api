@@ -84,7 +84,7 @@ if (process.env.FRONTEND_URL) {
 // Middleware
 app.use(cors({
   origin: allowedOrigins,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
