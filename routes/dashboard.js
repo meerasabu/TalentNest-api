@@ -16,13 +16,12 @@ router.get('/overview', verifyToken, async (req, res) => {
       JOIN users u ON p.user_id = u.id
       LEFT JOIN (
         SELECT 
-          o.item_id,
-          ROUND(AVG(r.rating)::numeric, 1) as avg_rating,
-          COUNT(r.id) as review_count
-        FROM reviews r
-        JOIN orders o ON r.order_id = o.id
-        WHERE o.item_type = 'product'
-        GROUP BY o.item_id
+          item_id,
+          ROUND(AVG(rating)::numeric, 1) as avg_rating,
+          COUNT(id) as review_count
+        FROM reviews
+        WHERE item_type = 'product'
+        GROUP BY item_id
       ) avg_rev ON avg_rev.item_id = p.id
       ORDER BY p.created_at DESC
       LIMIT 3

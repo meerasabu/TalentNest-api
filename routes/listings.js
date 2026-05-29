@@ -291,12 +291,13 @@ router.get('/skills', async (req, res) => {
       LEFT JOIN users ON skills.user_id = users.id 
       LEFT JOIN inventory ON inventory.item_id = skills.id AND inventory.item_type = 'skill'
       LEFT JOIN (
-        SELECT reviewed_id, 
+        SELECT item_id, 
                ROUND(AVG(rating)::numeric, 1) as avg_rating,
                COUNT(*) as review_count
         FROM reviews
-        GROUP BY reviewed_id
-      ) rev_stats ON rev_stats.reviewed_id = skills.user_id
+        WHERE item_type = 'skill'
+        GROUP BY item_id
+      ) rev_stats ON rev_stats.item_id = skills.id
       WHERE skills.status = 'Active' AND users.account_status IS DISTINCT FROM 'Suspended'
       ORDER BY skills.created_at DESC
     `);
@@ -390,10 +391,20 @@ router.get('/services', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT services.*, users.first_name, users.last_name, users.profile_image,
-             COALESCE(inventory.available_quantity, 0) as available_quantity
+             COALESCE(inventory.available_quantity, 0) as available_quantity,
+             COALESCE(rev_stats.avg_rating, 0.0) as rating,
+             COALESCE(rev_stats.review_count, 0) as reviews
       FROM services 
       LEFT JOIN users ON services.user_id = users.id 
       LEFT JOIN inventory ON inventory.item_id = services.id AND inventory.item_type = 'service'
+      LEFT JOIN (
+        SELECT item_id,
+               ROUND(AVG(rating)::numeric, 1) as avg_rating,
+               COUNT(id) as review_count
+        FROM reviews
+        WHERE item_type = 'service'
+        GROUP BY item_id
+      ) rev_stats ON rev_stats.item_id = services.id
       WHERE users.account_status IS DISTINCT FROM 'Suspended' AND services.status IS DISTINCT FROM 'Suspended'
       ORDER BY services.created_at DESC
     `);
@@ -410,10 +421,20 @@ router.get('/services/:id', async (req, res) => {
     const { id } = req.params;
     const result = await pool.query(`
       SELECT services.*, users.first_name, users.last_name, users.email, users.profile_image, users.account_status as provider_account_status,
-             COALESCE(inventory.available_quantity, 0) as available_quantity
+             COALESCE(inventory.available_quantity, 0) as available_quantity,
+             COALESCE(rev_stats.avg_rating, 0.0) as rating,
+             COALESCE(rev_stats.review_count, 0) as reviews
       FROM services 
       LEFT JOIN users ON services.user_id = users.id 
       LEFT JOIN inventory ON inventory.item_id = services.id AND inventory.item_type = 'service'
+      LEFT JOIN (
+        SELECT item_id,
+               ROUND(AVG(rating)::numeric, 1) as avg_rating,
+               COUNT(id) as review_count
+        FROM reviews
+        WHERE item_type = 'service'
+        GROUP BY item_id
+      ) rev_stats ON rev_stats.item_id = services.id
       WHERE services.id = $1
     `, [id]);
     

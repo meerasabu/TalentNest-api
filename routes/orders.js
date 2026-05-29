@@ -236,7 +236,8 @@ router.get('/buyer/:id', verifyToken, async (req, res) => {
       `SELECT o.id, o.buyer_id, o.seller_id, o.item_type, o.item_id, o.status, o.created_at, o.updated_at, o.quantity,
               o.selected_plan_type, o.selected_price, o.rejection_reason,
               o.booking_date, o.booking_slot, o.learning_goal, o.preferred_schedule, o.user_skill_level,
-              u.first_name as seller_first_name, u.last_name as seller_last_name, u.profile_image as seller_profile_image
+              u.first_name as seller_first_name, u.last_name as seller_last_name, u.profile_image as seller_profile_image,
+              EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS is_reviewed
        FROM orders o
        JOIN users u ON o.seller_id = u.id
        WHERE o.buyer_id = $1 AND o.seller_id != $1
@@ -281,7 +282,8 @@ router.get('/seller/:id', verifyToken, async (req, res) => {
       `SELECT o.id, o.buyer_id, o.seller_id, o.item_type, o.item_id, o.status, o.created_at, o.updated_at, o.quantity,
               o.selected_plan_type, o.selected_price, o.rejection_reason,
               o.booking_date, o.booking_slot, o.learning_goal, o.preferred_schedule, o.user_skill_level,
-              u.first_name as buyer_first_name, u.last_name as buyer_last_name, u.profile_image as buyer_profile_image
+              u.first_name as buyer_first_name, u.last_name as buyer_last_name, u.profile_image as buyer_profile_image,
+              EXISTS (SELECT 1 FROM reviews r WHERE r.order_id = o.id) AS is_reviewed
        FROM orders o
        JOIN users u ON o.buyer_id = u.id
        WHERE o.seller_id = $1 AND o.buyer_id != $1
