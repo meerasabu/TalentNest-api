@@ -64,10 +64,10 @@ module.exports = (io) => {
     // Handle incoming messages sent via WebSockets
     socket.on('send_message', async (data) => {
       try {
-        const { chatId, senderId, text } = data;
+        const { chatId, senderId, text, imageUrl } = data;
         const parsedSenderId = parseInt(senderId, 10);
 
-        if (!chatId || !senderId || !text) {
+        if (!chatId || !senderId || (!text && !imageUrl)) {
           socket.emit('error', { message: 'Missing required message parameters' });
           return;
         }
@@ -121,8 +121,8 @@ module.exports = (io) => {
 
         // Save message to database
         const result = await pool.query(
-          'INSERT INTO messages (chat_id, sender_id, message_text) VALUES ($1, $2, $3) RETURNING *',
-          [chatId, parsedSenderId, text]
+          'INSERT INTO messages (chat_id, sender_id, message_text, image_url) VALUES ($1, $2, $3, $4) RETURNING *',
+          [chatId, parsedSenderId, text || '', imageUrl || null]
         );
 
         // Fetch sender info for the response

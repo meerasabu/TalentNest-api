@@ -2,6 +2,20 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { verifyToken } = require('../middleware/authMiddleware');
+const multer = require('multer');
+const fileToBase64 = require('../utils/fileToBase64');
+
+// Multer memory storage (Vercel-compatible)
+const storage = multer.memoryStorage();
+const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const fileFilter = (req, file, cb) => {
+  if (allowedImageTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files (JPEG, PNG, GIF, WebP) are allowed'), false);
+  }
+};
+const upload = multer({ storage: storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // POST /api/chats - Create a new chat for an order (or return existing)
 router.post('/', verifyToken, async (req, res) => {
@@ -178,11 +192,11 @@ router.get('/chat/:chatId/messages', verifyToken, async (req, res) => {
 router.post('/chat/:chatId/messages', verifyToken, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { text } = req.body;
+    const { text, imageUrl } = req.body;
     const senderId = req.user.id;
 
-    if (!text) {
-      return res.status(400).json({ success: false, message: 'Message text is required' });
+    if (!text && !imageUrl) {
+      return res.status(400).json({ success: false, message: 'Message text or image is required' });
     }
 
     // Verify chat exists
@@ -212,8 +226,8 @@ router.post('/chat/:chatId/messages', verifyToken, async (req, res) => {
     }
 
     const result = await pool.query(
-      'INSERT INTO messages (chat_id, sender_id, message_text) VALUES ($1, $2, $3) RETURNING *',
-      [chatId, senderId, text]
+      'INSERT INTO messages (chat_id, sender_id, message_text, image_url) VALUES ($1, $2, $3, $4) RETURNING *',
+      [chatId, senderId, text || '', imageUrl || null]
     );
 
     // Fetch user info for the response
@@ -327,6 +341,23 @@ router.post('/:chatId/reopen', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Error reopening session:', error);
     res.status(500).json({ success: false, message: 'Server Error' });
+  }
+});
+
+// POST /api/chats/upload - Upload an image for chat attachment
+router.post('/upload', verifyToken, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+    const base64Url = fileToBase64(req.file);
+    if (!base64Url) {
+      return res.status(500).json({ success: false, message: 'Failed to convert file to base64' });
+    }
+    res.status(200).json({ success: true, url: base64Url });
+  } catch (error) {
+    console.error('Error handling chat image upload:', error);
+    res.status(500).json({ success: false, message: 'Server error processing image' });
   }
 });
 
