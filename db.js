@@ -6,7 +6,8 @@ require('dotenv').config();
 const isProduction = process.env.NODE_ENV === 'production';
 
 const poolConfig = {};
-
+console.log("DATABASE_URL =", process.env.DATABASE_URL);
+console.log("DB_HOST =", process.env.DB_HOST);
 if (process.env.DATABASE_URL) {
   poolConfig.connectionString = process.env.DATABASE_URL;
 } else {

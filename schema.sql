@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
   phone_number          VARCHAR(20),
   campus_location       VARCHAR(100),
   skills                JSONB         DEFAULT '[]',
-  profile_image         VARCHAR(255),
-  banner_image          VARCHAR(255),
+  profile_image         TEXT,
+  banner_image          TEXT,
   account_status        VARCHAR(50)   DEFAULT 'Active',        -- 'Active' | 'Suspended' | 'Banned'
   suspended_until       TIMESTAMP,
   reset_otp             VARCHAR(6),
@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS products (
   condition   VARCHAR(100),
   category    VARCHAR(100),
   image_url   VARCHAR(255),
+  image_urls  TEXT[],
   quantity    INTEGER       DEFAULT 1,
   status      VARCHAR(50)   DEFAULT 'Available',   -- 'Available' | 'Sold Out' | 'Suspended'
   created_at  TIMESTAMP     DEFAULT CURRENT_TIMESTAMP
@@ -69,6 +70,7 @@ CREATE TABLE IF NOT EXISTS skills (
   category             VARCHAR(100),
   hourly_rate          DECIMAL(10,2),
   image_url            VARCHAR(255),
+  image_urls           TEXT[],
   status               VARCHAR(50)   DEFAULT 'Pending Verification',  -- 'Pending Verification' | 'Active' | 'Rejected' | 'Suspended'
   charge_type          VARCHAR(50),
   available_time_slot  VARCHAR(255),
@@ -98,6 +100,7 @@ CREATE TABLE IF NOT EXISTS services (
   service_type    VARCHAR(100),
   rate            DECIMAL(10,2),
   image_url       VARCHAR(255),
+  image_urls      TEXT[],
   status          VARCHAR(50)   DEFAULT 'Active',   -- 'Active' | 'Suspended'
   standard_plan   NUMERIC,
   group_plan      NUMERIC,
@@ -148,6 +151,7 @@ CREATE TABLE IF NOT EXISTS chats (
   buyer_id    INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   seller_id   INTEGER      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   status      VARCHAR(50)  DEFAULT 'Active',   -- 'Active' | 'Closed'
+  is_closed   BOOLEAN      DEFAULT FALSE,
   created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(order_id)
 );
@@ -160,6 +164,7 @@ CREATE TABLE IF NOT EXISTS messages (
   chat_id       INTEGER  NOT NULL REFERENCES chats(chat_id) ON DELETE CASCADE,
   sender_id     INTEGER  NOT NULL REFERENCES users(id)     ON DELETE CASCADE,
   message_text  TEXT     NOT NULL,
+  image_url     TEXT,
   is_read       BOOLEAN  DEFAULT FALSE,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -172,6 +177,8 @@ CREATE TABLE IF NOT EXISTS reviews (
   reviewer_id          INTEGER  REFERENCES users(id)  ON DELETE CASCADE,
   reviewed_id          INTEGER  REFERENCES users(id)  ON DELETE CASCADE,
   order_id             INTEGER  REFERENCES orders(id) ON DELETE CASCADE,
+  item_id              INTEGER  NOT NULL,
+  item_type            VARCHAR(50) NOT NULL,
   rating               INTEGER  NOT NULL CHECK (rating >= 1 AND rating <= 5),
   review_text          TEXT,
   communication_rating INTEGER  CHECK (communication_rating >= 1 AND communication_rating <= 5),
