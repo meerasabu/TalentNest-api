@@ -40,7 +40,9 @@ const runMigrations = async () => {
         reported_id  INTEGER      REFERENCES users(id) ON DELETE CASCADE,
         reason       TEXT         NOT NULL,
         status       VARCHAR(50)  DEFAULT 'Pending',
-        created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+        created_at   TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+        item_id      INTEGER,
+        item_type    VARCHAR(50)
       );
     `);
 
@@ -182,6 +184,8 @@ const runMigrations = async () => {
     await client.query(`
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS chat_id INT REFERENCES chats(chat_id) ON DELETE SET NULL;
       ALTER TABLE reports ADD COLUMN IF NOT EXISTS severity VARCHAR(20) DEFAULT 'Medium';
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS item_id INTEGER;
+      ALTER TABLE reports ADD COLUMN IF NOT EXISTS item_type VARCHAR(50);
     `);
 
     // 12. User Notifications Table
